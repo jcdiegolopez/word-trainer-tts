@@ -1,59 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 
-const playSound = (type) => {
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-  const osc = audioCtx.createOscillator()
-  const gain = audioCtx.createGain()
-  
-  const now = audioCtx.currentTime
-  
-  switch (type) {
-    case 'tick': // Countdown 3-2-1
-      osc.type = 'sine'
-      osc.frequency.setValueAtTime(600, now)
-      gain.gain.setValueAtTime(0.1, now)
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1)
-      osc.start(now)
-      osc.stop(now + 0.1)
-      break
-    case 'change': // Word change / Start
-      osc.type = 'sine'
-      osc.frequency.setValueAtTime(800, now)
-      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1)
-      gain.gain.setValueAtTime(0.1, now)
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3)
-      osc.start(now)
-      osc.stop(now + 0.3)
-      break
-    case 'warning': // 3s left
-      osc.type = 'triangle'
-      osc.frequency.setValueAtTime(400, now)
-      gain.gain.setValueAtTime(0.05, now)
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1)
-      osc.start(now)
-      osc.stop(now + 0.1)
-      break
-    case 'finish': // Complete
-      // Arpeggio
-      [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
-         const o = audioCtx.createOscillator()
-         const g = audioCtx.createGain()
-         o.type = 'sine'
-         o.frequency.value = freq
-         g.gain.setValueAtTime(0.1, now + i * 0.1)
-         g.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.3)
-         o.connect(g)
-         g.connect(audioCtx.destination)
-         o.start(now + i * 0.1)
-         o.stop(now + i * 0.1 + 0.3)
-      })
-      return
-  }
-  
-  osc.connect(gain)
-  gain.connect(audioCtx.destination)
-}
-
 function App() {
   const [inputText, setInputText] = useState('')
   const [timeInput, setTimeInput] = useState(3)
@@ -66,10 +12,82 @@ function App() {
   const [startCount, setStartCount] = useState(3)
   
   const timerRef = useRef(null)
+  const audioCtxRef = useRef(null)
+
+  const initAudio = () => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)()
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume()
+    }
+    // Hack para desbloquear TTS en móviles
+    window.speechSynthesis.cancel()
+    const empty = new SpeechSynthesisUtterance('')
+    empty.volume = 0
+    window.speechSynthesis.speak(empty)
+  }
+
+  const playSound = (type) => {
+    if (!audioCtxRef.current) return
+    
+    const ctx = audioCtxRef.current
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    const now = ctx.currentTime
+    
+    switch (type) {
+      case 'tick': // Countdown 3-2-1
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(600, now)
+        gain.gain.setValueAtTime(0.1, now)
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1)
+        osc.start(now)
+        osc.stop(now + 0.1)
+        break
+      case 'change': // Word change / Start
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(800, now)
+        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1)
+        gain.gain.setValueAtTime(0.1, now)
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3)
+        osc.start(now)
+        osc.stop(now + 0.3)
+        break
+      case 'warning': // 3s left
+        osc.type = 'triangle'
+        osc.frequency.setValueAtTime(400, now)
+        gain.gain.setValueAtTime(0.05, now)
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1)
+        osc.start(now)
+        osc.stop(now + 0.1)
+        break
+      case 'finish': // Complete
+        // Arpeggio
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+           const o = ctx.createOscillator()
+           const g = ctx.createGain()
+           o.type = 'sine'
+           o.frequency.value = freq
+           g.gain.setValueAtTime(0.1, now + i * 0.1)
+           g.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.3)
+           o.connect(g)
+           g.connect(ctx.destination)
+           o.start(now + i * 0.1)
+           o.stop(now + i * 0.1 + 0.3)
+        })
+        return
+    }
+    
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+  }
 
   const speak = (text) => {
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = 1.0
+    utterance.lang = 'es-ES' // Asegurar idioma español
     window.speechSynthesis.speak(utterance)
   }
 
@@ -84,6 +102,9 @@ function App() {
       return
     }
 
+    // Inicializar audio con interacción de usuario
+    initAudio()
+
     setWords(wordList)
     setCurrentIndex(0)
     setIsFinished(false)
@@ -92,7 +113,9 @@ function App() {
     // Start countdown sequence
     setIsStarting(true)
     setStartCount(3)
-    playSound('tick')
+    
+    // Pequeño delay para asegurar que el contexto de audio esté listo
+    setTimeout(() => playSound('tick'), 100)
   }
 
   const handleRestart = () => {
